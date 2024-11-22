@@ -1,0 +1,1223 @@
+---
+title: "Untitled"
+author: "Naveen"
+date: "2024-11-20"
+output: html_document
+---
+
+```{r}
+# Load the dataset
+data <- read.csv("C:/Users/Naveen S/Downloads/urban_sustainability_chennai_real.csv")
+
+# Review dataset structure
+str(data)
+
+# Summarize numeric columns to check for unit consistency
+summary(data)
+
+# Example: Convert emissions from g/km to kg/km if needed
+# data$CO2_Emission_Private_g_per_km <- data$CO2_Emission_Private_g_per_km / 1000  # Convert to kg/km
+
+```
+
+```{r}
+# Detect outliers using boxplots
+boxplot(data$Green_Space_Area_sqm, main = "Green Space Area", horizontal = TRUE)
+boxplot(data$AQI, main = "AQI", horizontal = TRUE)
+boxplot(data$PM2.5, main = "PM2.5", horizontal = TRUE)
+boxplot(data$PM10, main = "PM10", horizontal = TRUE)
+
+# Calculate IQR for each column to detect outliers
+outlier_detection <- function(column) {
+  Q1 <- quantile(column, 0.25, na.rm = TRUE)  # First quartile
+  Q3 <- quantile(column, 0.75, na.rm = TRUE)  # Third quartile
+  IQR <- Q3 - Q1  # Interquartile range
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  list(lower_bound = lower_bound, upper_bound = upper_bound)
+}
+
+#Detect outliers for Green_Space_Area_sqm
+outlier_bounds <- outlier_detection(data$Green_Space_Area_sqm)
+print(outlier_bounds)
+
+# Filter out extreme outliers if necessary
+data <- data[data$Green_Space_Area_sqm >= outlier_bounds$lower_bound &
+             data$Green_Space_Area_sqm <= outlier_bounds$upper_bound, ]
+
+```
+```{r}
+# Normalize numeric columns
+normalize <- function(column) {
+  (column - min(column, na.rm = TRUE)) / (max(column, na.rm = TRUE) - min(column, na.rm = TRUE))
+}
+
+# Apply normalization to key columns
+data$Green_Space_Area_sqm <- normalize(data$Green_Space_Area_sqm)
+data$AQI <- normalize(data$AQI)
+data$PM2.5 <- normalize(data$PM2.5)
+data$PM10 <- normalize(data$PM10)
+data$CO2_Emission_Private_g_per_km <- normalize(data$CO2_Emission_Private_g_per_km)
+data$CO2_Emission_Public_g_per_km <- normalize(data$CO2_Emission_Public_g_per_km)
+
+# Encode categorical variables (if needed)
+# Example: One-hot encoding for "Season"
+
+# Ensure "Season" is a factor
+data$Season <- as.factor(data$Season)
+
+# Create dummy variables for the "Season" column using model.matrix
+season_dummies <- model.matrix(~ Season - 1, data = data)
+
+# Combine the original dataset with the dummy variables
+data <- cbind(data, season_dummies)
+
+# Drop the original "Season" column if no longer needed
+data$Season <- NULL
+
+# Verify the updated dataset
+summary(data)
+str(data)
+
+
+
+```
+```{r}
+# Load the dataset
+data <- read.csv("C:/Users/Naveen S/Downloads/urban_sustainability_chennai_real.csv")
+
+# Function to standardize the units (conversion example for area and emissions)
+standardize_units <- function(data) {
+  # Example: Convert Green_Space_Area from square meters to square kilometers
+  data$Green_Space_Area_sqm <- data$Green_Space_Area_sqm / 1e6  # Convert sqm to km^2
+  
+  # Example: Convert CO2 emissions (private/public) from g/km to kg/km
+  data$CO2_Emission_Private_g_per_km <- data$CO2_Emission_Private_g_per_km / 1000  # g to kg
+  data$CO2_Emission_Public_g_per_km <- data$CO2_Emission_Public_g_per_km / 1000  # g to kg
+  
+  return(data)
+}
+
+# Standardize the units
+data <- standardize_units(data)
+
+# Detect outliers using boxplots and IQR method
+outlier_detection <- function(column) {
+  Q1 <- quantile(column, 0.25, na.rm = TRUE)  # First quartile
+  Q3 <- quantile(column, 0.75, na.rm = TRUE)  # Third quartile
+  IQR <- Q3 - Q1  # Interquartile range
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  list(lower_bound = lower_bound, upper_bound = upper_bound)
+}
+
+# Function to handle outliers (remove, cap, or impute)
+handle_outliers <- function(data, column_name, method = "remove") {
+  outlier_bounds <- outlier_detection(data[[column_name]])
+  
+  if (method == "remove") {
+    # Remove rows with outliers
+    data <- data[data[[column_name]] >= outlier_bounds$lower_bound &
+                 data[[column_name]] <= outlier_bounds$upper_bound, ]
+  } else if (method == "cap") {
+    # Cap outliers to the upper and lower bounds
+    data[[column_name]] <- pmin(pmax(data[[column_name]], outlier_bounds$lower_bound), outlier_bounds$upper_bound)
+  } else if (method == "impute") {
+    # Impute outliers with the median (you could also use mean or other imputation methods)
+    median_value <- median(data[[column_name]], na.rm = TRUE)
+    data[[column_name]][data[[column_name]] < outlier_bounds$lower_bound | 
+                        data[[column_name]] > outlier_bounds$upper_bound] <- median_value
+  }
+  
+  return(data)
+}
+
+# Example: Handle outliers for Green_Space_Area_sqm (remove, cap, or impute)
+data <- handle_outliers(data, "Green_Space_Area_sqm", method = "remove")
+data <- handle_outliers(data, "AQI", method = "cap")  # Example: capping AQI outliers
+data <- handle_outliers(data, "PM2.5", method = "impute")  # Example: imputing PM2.5 outliers
+
+# Verify the updated dataset
+summary(data)
+str(data)
+
+```
+```{r}
+# Verify the units of numeric columns in the dataset
+# List of columns that should be in specific units
+unit_check <- function(column_name) {
+  if (column_name %in% c("Green_Space_Area_sqm", "Rainfall_mm", "Travel_Time_mins", "Road_Quality_Index")) {
+    cat(paste(column_name, "is in appropriate units.\n"))
+  } else if (column_name %in% c("CO2_Emission_Private_g_per_km", "CO2_Emission_Public_g_per_km")) {
+    cat(paste(column_name, "is in grams per kilometer.\n"))
+  } else {
+    cat(paste(column_name, "needs unit verification.\n"))
+  }
+}
+
+# Apply unit check on the dataset columns
+sapply(names(data), unit_check)
+
+```
+```{r}
+# Define function for capping outliers based on IQR
+cap_outliers <- function(column) {
+  Q1 <- quantile(column, 0.25, na.rm = TRUE)
+  Q3 <- quantile(column, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  # Cap values below lower_bound and above upper_bound
+  column[column < lower_bound] <- lower_bound
+  column[column > upper_bound] <- upper_bound
+  return(column)
+}
+
+# Apply outlier capping for columns like AQI, PM2.5, and PM10
+data$AQI <- cap_outliers(data$AQI)
+data$PM2.5 <- cap_outliers(data$PM2.5)
+data$PM10 <- cap_outliers(data$PM10)
+
+# Impute missing values for any columns if applicable (using median for numeric)
+impute_missing_values <- function(column) {
+  column[is.na(column)] <- median(column, na.rm = TRUE)
+  return(column)
+}
+
+# Apply imputation to relevant columns if they have missing values
+data$Green_Space_Area_sqm <- impute_missing_values(data$Green_Space_Area_sqm)
+data$CO2_Emission_Private_g_per_km <- impute_missing_values(data$CO2_Emission_Private_g_per_km)
+data$CO2_Emission_Public_g_per_km <- impute_missing_values(data$CO2_Emission_Public_g_per_km)
+
+# Verifying changes after capping and imputation
+summary(data)
+
+```
+
+```{r}
+# Check summary after handling outliers and imputations
+summary(data)
+
+# Check for remaining NAs
+cat("Remaining missing values per column:\n")
+sapply(data, function(x) sum(is.na(x)))
+
+# Verify that numeric columns are within expected ranges (after normalization)
+cat("Verifying numeric columns after transformation:\n")
+summary(data[, sapply(data, is.numeric)])
+
+```
+```{r}
+
+library(sf)
+library(leaflet)
+
+# Load the dataset (since you're using a local CSV file)
+data <- read.csv("C:/Users/Naveen S/Downloads/urban_sustainability_chennai_real.csv")
+
+# Check the structure and ensure that Latitude and Longitude are numeric
+str(data) # Review dataset structure
+data$Latitude <- as.numeric(data$Latitude) # Convert to numeric if necessary
+data$Longitude <- as.numeric(data$Longitude) # Convert to numeric if necessary
+
+# Convert the data frame to spatial object using Latitude and Longitude columns
+data_sf <- st_as_sf(data, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Plot Green Space Area on a map using leaflet
+leaflet(data_sf) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    radius = ~Green_Space_Area_sqm / 1000,  # Adjust the radius for better visibility (divide by 1000 for scaling)
+    color = "green",
+    stroke = FALSE,
+    fillOpacity = 0.6,
+    popup = ~paste("Region: ", Region, "<br>",
+                   "Green Space Area: ", Green_Space_Area_sqm, " sqm", "<br>",
+                   "AQI: ", AQI, "<br>",
+                   "PM2.5: ", PM2.5, "<br>",
+                   "Rainfall: ", Rainfall_mm, " mm")
+  ) %>%
+  addLegend(
+    "bottomright", 
+    pal = colorNumeric(palette = "YlGnBu", domain = data_sf$Green_Space_Area_sqm), 
+    values = data_sf$Green_Space_Area_sqm, 
+    title = "Green Space Area (sqm)"
+  )
+#0-50 good /50-100 moderate
+```
+
+
+```{r}
+library(sf)
+library(leaflet)
+library(dplyr)
+
+# Load the dataset
+data <- read.csv("C:/Users/Naveen S/Downloads/urban_sustainability_chennai_real.csv")
+
+# Check structure to ensure the columns are correct
+cat("\nDataset Structure:\n")
+str(data)
+
+# Check for invalid latitudes and longitudes (lat should be between 10 and 14, long between 79 and 81)
+invalid_latitudes <- data[is.na(data$Latitude) | data$Latitude < 10 | data$Latitude > 14, ]
+invalid_longitudes <- data[is.na(data$Longitude) | data$Longitude < 79 | data$Longitude > 81, ]
+
+# Print invalid latitude and longitude rows for review
+cat("Invalid Latitude Rows:\n")
+print(invalid_latitudes)
+
+cat("\nInvalid Longitude Rows:\n")
+print(invalid_longitudes)
+
+# Clean the data by filtering out invalid latitudes and longitudes
+data_clean <- data %>%
+  filter(!is.na(Latitude) & !is.na(Longitude) &
+         Latitude >= 10 & Latitude <= 14 &  # Valid latitude range for Chennai
+         Longitude >= 79 & Longitude <= 81)  # Valid longitude range for Chennai
+
+# Check the cleaned data structure
+cat("\nCleaned Data Structure:\n")
+str(data_clean)
+
+# View a few rows of the cleaned data to check coordinates and region names
+head(data_clean)
+
+# Check for potential inconsistencies in region names (trailing spaces, etc.)
+unique(data_clean$Region)
+
+# Convert the cleaned data frame to a spatial object
+data_sf <- st_as_sf(data_clean, coords = c("Longitude", "Latitude"), crs = 4326)
+
+# Map a small sample to verify the coordinates
+sample_data <- data_clean[1:5, ]  # Get a sample of 5 rows for quick mapping
+
+leaflet(sample_data) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    radius = ~Green_Space_Area_sqm / 1000,  # Adjust the radius size for better visibility
+    color = "green",
+    stroke = FALSE,
+    fillOpacity = 0.6,
+    popup = ~paste("Region: ", Region, "<br>",
+                   "Green Space Area: ", Green_Space_Area_sqm, " sqm", "<br>",
+                   "AQI: ", AQI, "<br>",
+                   "PM2.5: ", PM2.5, "<br>",
+                   "Rainfall: ", Rainfall_mm, " mm")
+  ) %>%
+  addLegend(
+    "bottomright", 
+    pal = colorNumeric(palette = "YlGnBu", domain = data_sf$Green_Space_Area_sqm), 
+    values = data_sf$Green_Space_Area_sqm, 
+    title = "Green Space Area (sqm)"
+  ) %>%
+  setView(lng = 80.2785, lat = 13.0878, zoom = 10)  # Set the map view to Chennai
+
+```
+
+
+```{r}
+# Load required libraries
+library(httr)
+library(jsonlite)
+library(dplyr)
+
+# OpenCage API key (replace with your valid API key)
+api_key <- "cbba3a2ce5974b33ae0316dc61a78d73"
+
+# Function to reverse geocode using OpenCage API
+reverse_geocode <- function(lat, lon, api_key) {
+  url <- paste0("https://api.opencagedata.com/geocode/v1/json?key=", api_key, 
+                "&q=", lat, ",", lon, "&language=en")
+  response <- GET(url)
+  result <- fromJSON(content(response, "text", encoding = "UTF-8"))
+  
+  if (length(result$results) > 0) {
+    region_name <- result$results[[1]]$components$county
+    return(region_name)
+  } else {
+    return(NA)
+  }
+}
+
+# Apply the reverse geocoding function to each row in the dataset
+data_clean$Verified_Region <- mapply(reverse_geocode, data_clean$Latitude, data_clean$Longitude, MoreArgs = list(api_key = api_key))
+
+# Check the first few rows to verify the region names
+head(data_clean[, c("Region", "Verified_Region", "Latitude", "Longitude")])
+
+# Compare the original region names with the reverse-geocoded ones
+cat("Regions that do not match:\n")
+non_matching <- data_clean %>%
+  filter(Region != Verified_Region) %>%
+  select(Region, Verified_Region, Latitude, Longitude)
+
+print(non_matching)
+
+
+```
+
+```{r}
+# Load the necessary libraries
+library(plotly)
+library(dplyr)
+
+# Selecting relevant columns for correlation analysis
+cor_data <- data %>%
+  select(Green_Space_Area_sqm, AQI, Transit_Stops, 
+         PM2.5, PM10, 
+         CO2_Emission_Private_g_per_km, CO2_Emission_Public_g_per_km)  # Emission variables
+
+# Compute the correlation matrix
+cor_matrix <- cor(cor_data, use = "complete.obs")
+
+# Convert the correlation matrix to a data frame for interactive plotting
+cor_df <- as.data.frame(as.table(cor_matrix))
+
+# Create an interactive heatmap using plotly
+plot_ly(
+  data = cor_df,
+  x = ~Var1,
+  y = ~Var2,
+  z = ~Freq,
+  type = "heatmap",
+  colors = colorRamp(c("blue", "white", "red")),
+  hovertemplate = paste(
+    "<b>Variable 1:</b> %{x}<br>",
+    "<b>Variable 2:</b> %{y}<br>",
+    "<b>Correlation:</b> %{z:.2f}<extra></extra>"
+  )
+) %>%
+  layout(
+    title = "Interactive Correlation Matrix",#very negative(inverse) ,very postive(similar)
+    xaxis = list(title = "Variables", tickangle = 45),
+    yaxis = list(title = "Variables"),
+    margin = list(l = 100, r = 100, t = 100, b = 150)
+  )
+
+
+
+```
+```{r}
+# Check if Rainfall and Temperature columns exist
+if ("Rainfall" %in% colnames(data)) {
+  # Use Rainfall to define seasons
+  data$Season <- case_when(
+    data$Rainfall >= 150 ~ "Winter",  # High rainfall for Winter
+    data$Rainfall >= 100 & data$Rainfall < 150 ~ "Spring",  # Moderate rainfall for Spring
+    data$Rainfall >= 50 & data$Rainfall < 100 ~ "Summer",  # Lower rainfall for Summer
+    data$Rainfall < 50 ~ "Fall",  # Very low rainfall for Fall
+    TRUE ~ "Unknown"  # Handle any anomalies
+  )
+}
+
+# Alternatively, you can use Temperature if available
+if ("Temperature___C_" %in% colnames(data)) {
+  # Use Temperature to define seasons
+  data$Season <- case_when(
+    data$Temperature___C_ <= 20 ~ "Winter",  # Cold temperature for Winter
+    data$Temperature___C_ <= 30 & data$Temperature___C_ > 20 ~ "Spring",  # Mild temperatures for Spring
+    data$Temperature___C_ > 30 ~ "Summer",  # Hot temperatures for Summer
+    TRUE ~ "Unknown"  # Handle anomalies
+  )
+}
+
+# Check the structure of the data to ensure the 'Season' column is created
+str(data)
+
+```
+```{r}
+
+library(ggplot2)
+
+# Plot AQI over different seasons
+ggplot(data, aes(x = Season, y = AQI, fill = Season)) +
+  geom_boxplot() +
+  labs(title = "AQI Across Seasons", y = "Air Quality Index (AQI)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+
+```
+```{r}
+# Summary of AQI by season to check if there are significant differences
+summary_data <- data %>%
+  group_by(Season) %>%
+  summarize(AQI_Mean = mean(AQI, na.rm = TRUE),
+            AQI_Min = min(AQI, na.rm = TRUE),
+            AQI_Max = max(AQI, na.rm = TRUE),
+            AQI_StdDev = sd(AQI, na.rm = TRUE))
+
+# Display the summary
+print(summary_data)
+
+```
+
+```{r}
+
+
+# Install and load the required package for decision trees
+install.packages("rpart")
+library(rpart)
+
+# Fit a decision tree model for Green Space Area
+model_tree <- rpart(Green_Space_Area_sqm ~ AQI + Latitude + Longitude, data = data, method = "anova")
+
+# Summary of the decision tree model
+summary(model_tree)
+
+# Predict Green Space Area using the decision tree model
+data$Predicted_Green_Space_Tree <- predict(model_tree)
+
+# Plot predicted vs actual Green Space Area
+ggplot(data, aes(x = Predicted_Green_Space_Tree, y = Green_Space_Area_sqm)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red") +  # Line of equality
+  labs(title = "Predicted vs Actual Green Space Area (Decision Tree)", 
+       x = "Predicted Green Space Area (sqm)", y = "Actual Green Space Area (sqm)")
+
+```
+```{r}
+# Linear regression model to predict Green Space Area
+model_green_space <- lm(Green_Space_Area_sqm ~ AQI + Latitude + Longitude, data = data)
+
+# Summary of the model
+summary(model_green_space)
+
+# Predict Green Space Suitability
+data$Predicted_Green_Space <- predict(model_green_space)
+
+# Plot predicted vs actual green space area
+ggplot(data, aes(x = Predicted_Green_Space, y = Green_Space_Area_sqm)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "red") +  # Line of equality
+  labs(title = "Predicted vs Actual Green Space Area", x = "Predicted Green Space Area (sqm)", y = "Actual Green Space Area (sqm)")
+
+```
+```{r}
+# Linear regression model to predict emissions reduction (public transport)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Summary of the model
+summary(model_emissions_reduction)
+
+# Predict emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Visualize predicted emissions reduction
+ggplot(data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Predicted Emissions Reduction Based on Transit Stops", x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)")
+
+```
+
+```{r}
+# Filter data for specific regions (e.g., "Region1" and "Region2")
+filtered_data <- data %>% filter(Region %in% c("Adyar", "Avadi","Tambaram","Guindy","VIT Chennai"))
+
+library(plotly)
+
+# Linear regression model to predict emissions reduction (public transport)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = filtered_data)
+
+# Predict emissions reduction for the filtered regions
+filtered_data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Create an interactive scatter plot using plotly
+p <- ggplot(filtered_data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction)) +
+  geom_point(aes(text = paste("Region:", Region,
+                              "<br>Initial Emissions:", round(CO2_Emission_Public_g_per_km, 2), "g/km",
+                              "<br>Predicted Emissions Reduction:", round(Predicted_Emission_Reduction, 2), "g/km",
+                              "<br>Transit Stops:", Transit_Stops,
+                              "<br>Travel Time:", Travel_Time_mins,
+                              "<br>Rainfall:", Rainfall_mm))) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Predicted Emissions Reduction Based on Transit Stops (Filtered Regions)",
+       x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)") +
+  theme_minimal()
+
+# Convert the ggplot to an interactive plotly plot
+interactive_plot <- ggplotly(p, tooltip = "text")
+
+# Show the interactive plot
+interactive_plot
+
+```
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Fit a linear regression model to predict emissions reduction
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Display the summary of the linear model
+summary(model_emissions_reduction)
+
+# Predict emissions reduction for the entire dataset
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Check the first few rows of the predictions
+head(data$Predicted_Emission_Reduction)
+
+```
+```{r}
+# Load the leaflet package for interactive map
+library(leaflet)
+
+# Create an interactive map with predicted emissions reduction
+leaflet(data) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    radius = ~Transit_Stops / 10,  # Adjust size based on transit stop count
+    color = "blue",
+    stroke = FALSE,
+    fillOpacity = 0.6,
+    popup = ~paste("Region: ", Region, "<br>",
+                   "Transit Stops: ", Transit_Stops, "<br>",
+                   "Predicted Emission Reduction: ", round(Predicted_Emission_Reduction, 2), " g/km", "<br>",
+                   "AQI: ", AQI)
+  ) %>%
+  setView(lng = mean(data$Longitude), lat = mean(data$Latitude), zoom = 10)  # Center map on dataset
+
+```
+
+```{r}
+
+
+```
+
+
+```{r}
+# Linear regression model to predict emissions based on road quality and congestion
+model_road_congestion <- lm(CO2_Emission_Private_g_per_km ~ Road_Quality_Index + Traffic_Congestion_Index + Average_Vehicle_Speed_kmph, data = data)
+
+# Summary of the model
+summary(model_road_congestion)
+
+# Predict emissions improvement
+data$Predicted_Emissions_Improvement <- predict(model_road_congestion)
+
+# Visualize road quality impact on emissions
+ggplot(data, aes(x = Road_Quality_Index, y = Predicted_Emissions_Improvement)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Impact of Road Quality on Emissions", x = "Road Quality Index", y = "Predicted Emissions Reduction")
+
+```
+
+```{r}
+
+library(plotly)
+library(ggplot2)
+
+# Example of adding a 'Cluster' column using K-means clustering on 'Green_Space_Area_sqm' and 'AQI'
+# Perform K-means clustering on selected columns (e.g., Green_Space_Area_sqm, AQI)
+set.seed(123)  # Set seed for reproducibility
+kmeans_result <- kmeans(data[, c("Green_Space_Area_sqm", "AQI")], centers = 3)  # 3 clusters
+
+# Add the cluster result to the dataset
+data$Cluster <- as.factor(kmeans_result$cluster)
+
+# Create an interactive plot for clustering results
+p <- ggplot(data, aes(x = Green_Space_Area_sqm, y = AQI, color = Cluster)) +
+  geom_point() +
+  labs(title = "Interactive Clustering of Regions by AQI and Green Space Area",
+       x = "Green Space Area (sqm)", y = "AQI", color = "Cluster")
+
+# Convert ggplot to an interactive plotly plot
+ggplotly(p)
+
+
+```
+
+```{r}
+
+```
+```{r}
+# Load leaflet for geospatial mapping
+library(leaflet)
+
+# Interactive map to visualize existing transit stops
+leaflet(data) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    lng = ~Longitude,
+    lat = ~Latitude,
+    radius = ~Transit_Stops / 10,  # Adjust radius based on the number of stops
+    color = "blue",
+    stroke = FALSE,
+    fillOpacity = 0.6,
+    popup = ~paste("Region: ", Region, "<br>",
+                   "Transit Stops: ", Transit_Stops, "<br>",
+                   "AQI: ", AQI)
+  ) %>%
+  setView(lng = mean(data$Longitude), lat = mean(data$Latitude), zoom = 12)  # Center map on dataset
+
+```
+
+```{r}
+# Install and load plotly
+library(plotly)
+
+# Linear regression for emissions reduction (assuming you already have this model)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Predicted emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Interactive scatter plot of Transit Stops vs Predicted Emissions Reduction
+p2 <- ggplot(data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction, color = Region)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Emissions Reduction with Public Transport Expansion",
+       x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)") +
+  theme_minimal()
+
+# Convert to plotly
+ggplotly(p2)
+
+```
+```{r}
+# Linear regression model for road quality and emissions
+model_road_congestion <- lm(CO2_Emission_Private_g_per_km ~ Road_Quality_Index + Traffic_Congestion_Index + Average_Vehicle_Speed_kmph, data = data)
+
+# Predicted emissions
+data$Predicted_Emissions_Improvement <- predict(model_road_congestion)
+
+# Interactive plot using plotly
+p3 <- ggplot(data, aes(x = Road_Quality_Index, y = Predicted_Emissions_Improvement, color = Region)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Impact of Road Quality on Emissions",
+       x = "Road Quality Index", y = "Predicted Emissions Improvement (g/km)") +
+  theme_minimal()
+
+# Convert ggplot to plotly for interaction
+ggplotly(p3)
+
+```
+
+```{r}
+# Install and load plotly and ggplot2
+library(ggplot2)
+library(plotly)
+library(gganimate)
+
+# Linear regression for emissions reduction (assuming you already have this model)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Predicted emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Filter the data for a more manageable subset (e.g., regions with significant emissions reduction)
+filtered_data <- data[data$Predicted_Emission_Reduction > 50, ]
+
+# Add a sequence for animation (simulating "travel" from one region to another)
+# Sequence here can represent a journey or "path" that connects regions or transit stops
+filtered_data$sequence <- 1:nrow(filtered_data)
+
+# You could optionally add the travel time or distance to transit as part of the filtering criteria or animation
+filtered_data$Travel_Time <- filtered_data$Travel_Time_mins  # You can adjust this to simulate travel patterns
+
+# Interactive scatter plot with animation (showing travel from region to region)
+p2 <- ggplot(filtered_data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction, color = Region, 
+                                size = Predicted_Emission_Reduction, text = paste("Region: ", Region, "<br>Predicted Emissions Reduction: ", round(Predicted_Emission_Reduction, 2)))) +
+  geom_point(alpha = 0.7) +  # Adjust point transparency
+  geom_smooth(method = "lm", se = FALSE, color = "black") +  # Linear regression line
+  labs(title = "Emissions Reduction with Public Transport Expansion (Filtered Data)",
+       x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)") +
+  theme_minimal() +
+  theme(legend.position = "right") +  # Place the legend on the right
+  scale_color_brewer(palette = "Set1") +  # Use a nice color palette for regions
+  transition_states(sequence, transition_length = 2, state_length = 1)  # Animation transition to simulate movement
+
+# Convert to plotly for interactivity and animate
+interactive_plot <- ggplotly(p2, tooltip = "text")  # Show hover information for each point
+
+# Display the plot
+interactive_plot
+
+```
+
+```{r}
+# Install and load plotly and ggplot2
+library(ggplot2)
+library(plotly)
+library(gganimate)
+
+# Linear regression for emissions reduction (assuming you already have this model)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Predicted emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Assuming you have actual emissions data, for example:
+# (Replace with actual column for initial emissions if available)
+data$Initial_Emissions <- data$CO2_Emission_Public_g_per_km  # Assuming this is the actual emissions column
+
+# Filter the data for a more manageable subset (e.g., regions with significant emissions reduction)
+filtered_data <- data[data$Predicted_Emission_Reduction > 50, ]
+
+# Add a sequence for animation (simulating "travel" from one region to another)
+filtered_data$sequence <- 1:nrow(filtered_data)
+
+# You could optionally add the travel time or distance to transit as part of the filtering criteria or animation
+filtered_data$Travel_Time <- filtered_data$Travel_Time_mins  # You can adjust this to simulate travel patterns
+
+# Interactive scatter plot with animation (showing travel from region to region)
+p2 <- ggplot(filtered_data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction, color = Region, 
+                                size = Predicted_Emission_Reduction, 
+                                text = paste("Region: ", Region, 
+                                             "<br>Predicted Emissions Reduction: ", round(Predicted_Emission_Reduction, 2),
+                                             "<br>Initial Emissions: ", round(Initial_Emissions, 2)))) +
+  # Plot actual emissions as points
+  geom_point(alpha = 0.7, aes(size = Initial_Emissions), color = "red") +  # Actual emissions points in red
+  geom_point(alpha = 0.7) +  # Predicted emissions reduction points (same as before)
+  geom_smooth(method = "lm", se = FALSE, color = "black") +  # Linear regression line
+  labs(title = "Emissions Reduction with Public Transport Expansion (Filtered Data)",
+       x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)") +
+  theme_minimal() +
+  theme(legend.position = "right") +  # Place the legend on the right
+  scale_color_brewer(palette = "Set1") +  # Use a nice color palette for regions
+  transition_states(sequence, transition_length = 2, state_length = 1)  # Animation transition to simulate movement
+
+# Convert to plotly for interactivity and animate
+interactive_plot <- ggplotly(p2, tooltip = "text")  # Show hover information for each point
+
+# Display the plot
+interactive_plot
+
+```
+```{r}
+# Install and load required libraries
+library(ggplot2)
+library(plotly)
+library(gganimate)
+library(dplyr)
+
+# Assuming 'data' is your dataset, which contains the required information
+# Let's simulate the travel between Adyar -> Mogappair -> Porur -> Tambaram -> Guindy
+
+# Assign specific regions to your data (make sure your dataset includes a column for 'Region')
+data$Region <- factor(data$Region, levels = c("Adyar", "Mogappair", "Porur", "Tambaram", "Guindy"))
+
+# Linear regression for emissions reduction
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Predicted emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Add a sequence for animation (this simulates travel from one region to another)
+# You can assign the sequence manually based on the order of regions
+data$sequence <- as.numeric(factor(data$Region, levels = c("Adyar", "Mogappair", "Porur", "Tambaram", "Guindy")))
+
+# Now we will add pathlines connecting regions based on the sequence
+# This assumes your 'data' has latitude and longitude for each region (if not, you'll need to add that)
+
+# For the sake of illustration, let's assume that your dataset has 'Latitude' and 'Longitude' for each region
+# If not, you need to integrate these values manually or through an external geocoding service
+
+# Example for illustrative purposes:
+data$Latitude <- c(13.0034, 13.1060, 13.0326, 12.9193, 13.0007)  # Replace with actual latitudes
+data$Longitude <- c(80.2504, 80.1794, 80.1874, 80.1500, 80.2159)  # Replace with actual longitudes
+
+# Interactive plot with lines connecting the points (pathline)
+p2 <- ggplot(data, aes(x = Longitude, y = Latitude, color = Region, 
+                       size = Predicted_Emission_Reduction, 
+                       text = paste("Region: ", Region, 
+                                    "<br>Predicted Emissions Reduction: ", round(Predicted_Emission_Reduction, 2),
+                                    "<br>Initial Emissions: ", round(CO2_Emission_Public_g_per_km, 2)))) +
+  # Plot the points for each location
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +  # Linear regression line
+  geom_path(aes(group = 1), color = "blue", linetype = "dashed", size = 1) +  # Pathline connecting points
+  labs(title = "Emissions Reduction and Travel Pathline (Adyar to Guindy)",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_brewer(palette = "Set1") +  # Color palette for regions
+  transition_states(sequence, transition_length = 2, state_length = 1)  # Animation transition to simulate movement
+
+# Convert to plotly for interactivity and animate
+interactive_plot <- ggplotly(p2, tooltip = "text")  # Show hover information for each point
+
+# Display the plot
+interactive_plot
+
+```
+```{r}
+# Install and load plotly, ggplot2, and gganimate
+library(ggplot2)
+library(plotly)
+library(gganimate)
+
+# Assuming data is already loaded and contains columns like:
+# Region, Transit_Stops, Travel_Time_mins, Rainfall_mm, CO2_Emission_Public_g_per_km
+# and the relevant columns for emissions and regions
+
+# Linear regression model for emissions reduction (assuming you already have this model)
+model_emissions_reduction <- lm(CO2_Emission_Public_g_per_km ~ Transit_Stops + Travel_Time_mins + Rainfall_mm, data = data)
+
+# Predicted emissions reduction
+data$Predicted_Emission_Reduction <- predict(model_emissions_reduction)
+
+# Actual emissions column (Initial Emissions)
+data$Initial_Emissions <- data$CO2_Emission_Public_g_per_km
+
+# Filter the data for regions like Adyar and Ambattur, or based on other criteria
+filtered_data <- data[data$Region %in% c("Adyar", "Ambattur"), ]
+
+# Add a sequence for animation (to simulate travel from one region to another)
+filtered_data$sequence <- 1:nrow(filtered_data)
+
+# Create a new column to flag where Initial Emissions are greater than Predicted Emissions
+filtered_data$Emissions_Comparison <- ifelse(filtered_data$Initial_Emissions > filtered_data$Predicted_Emission_Reduction, 
+                                              "Initial > Predicted", 
+                                              "Initial <= Predicted")
+
+# Create the plot with lines showing the journey (Adyar to Ambattur)
+p2 <- ggplot(filtered_data, aes(x = Transit_Stops, y = Predicted_Emission_Reduction, 
+                                color = Emissions_Comparison, text = paste("Region: ", Region, 
+                                                                          "<br>Predicted Emissions Reduction: ", round(Predicted_Emission_Reduction, 2),
+                                                                          "<br>Initial Emissions: ", round(Initial_Emissions, 2)))) +
+  # Plotting initial emissions (as red points when Initial > Predicted)
+  geom_point(aes(size = Initial_Emissions), color = "red", alpha = 0.7) +  # Initial emissions (actual data)
+  # Plotting predicted emissions (as regular points)
+  geom_point(aes(size = Predicted_Emission_Reduction)) +
+  # Adding the pathline connecting Adyar and Ambattur (or other regions)
+  geom_path(aes(group = 1), color = "blue", alpha = 0.5) +  # Pathline connecting points (simulating journey)
+  geom_smooth(method = "lm", se = FALSE, color = "black") +  # Regression line for emissions reduction
+  labs(title = "Emissions Reduction with Public Transport Expansion (Adyar to Ambattur)",
+       x = "Number of Transit Stops", y = "Predicted Emissions Reduction (g/km)") +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  scale_color_manual(values = c("Initial > Predicted" = "red", 
+                                "Initial <= Predicted" = "green")) +  # Red for cases where Initial > Predicted
+  transition_states(sequence, transition_length = 2, state_length = 1)  # Animation
+
+# Convert the ggplot2 plot to an interactive Plotly plot
+interactive_plot <- ggplotly(p2, tooltip = "text")  # Show hover information for each point
+
+# Display the plot
+interactive_plot
+
+```
+
+```{r}
+# Install required packages if you don't have them
+# install.packages(c("shiny", "leaflet", "ggplot2", "plotly", "dplyr", "shinydashboard"))
+
+# Load required libraries
+library(shiny)
+library(leaflet)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(shinydashboard)
+
+# Define the UI for the app with custom styling
+ui <- dashboardPage(
+  dashboardHeader(title = "Urban Sustainability Dashboard", titleWidth = 300),
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
+      menuItem("Geospatial Analysis", tabName = "geo_map", icon = icon("map")),
+      menuItem("Trends and Correlations", tabName = "trend_plot", icon = icon("chart-line")),
+      menuItem("Model Results", tabName = "model_results", icon = icon("cogs")),
+      menuItem("Scenarios", tabName = "scenarios", icon = icon("exchange-alt"))
+    )
+  ),
+  dashboardBody(
+    tabItems(
+      
+      # Overview Tab
+      tabItem(tabName = "overview",
+              fluidRow(
+                box(title = "Green Space & AQI Overview", width = 12, solidHeader = TRUE, status = "primary",
+                    p("Here we summarize key sustainability indicators in urban areas, including green space, air quality index (AQI), and emissions. 
+                      Select a region from the dropdown menu to analyze."),
+                    selectInput("region", "Select Region:", choices = unique(data$Region), selected = "Adyar"),
+                    actionButton("update", "Update Dashboard"),
+                    br(),
+                    p(id = "overview_text", htmlOutput("overview_text")),
+                    plotlyOutput("overview_plot")
+                )
+              )
+      ),
+      
+      # Geospatial Analysis Tab
+      tabItem(tabName = "geo_map",
+              fluidRow(
+                box(title = "Geospatial Map of Green Spaces and AQI", width = 12, solidHeader = TRUE, status = "info",
+                    leafletOutput("geo_map"))
+              )
+      ),
+      
+      # Trends and Correlations Tab
+      tabItem(tabName = "trend_plot",
+              fluidRow(
+                box(title = "Trends in Green Space vs AQI", width = 12, solidHeader = TRUE, status = "success",
+                    plotlyOutput("trend_plot"))
+              )
+      ),
+      
+      # Model Results Tab
+      tabItem(tabName = "model_results",
+              fluidRow(
+                box(title = "Clustering and Regression Insights", width = 12, solidHeader = TRUE, status = "warning",
+                    plotlyOutput("model_results"))
+              )
+      ),
+      
+      # Scenarios Tab
+      tabItem(tabName = "scenarios",
+              fluidRow(
+                box(title = "Simulating Urbanization Changes", width = 12, solidHeader = TRUE, status = "danger",
+                    sliderInput("green_space", "Change in Green Space (sqm):", min = 0, max = 10000, value = 5000),
+                    actionButton("simulate", "Simulate Change"),
+                    br(),
+                    textOutput("scenario_results")
+                )
+              )
+      )
+    )
+  )
+)
+
+# Define server logic with creative elements and interactivity
+server <- function(input, output, session) {
+  
+  # Overview Tab: Display Green Space, AQI, and Emissions Summary
+  output$overview_text <- renderText({
+    region_data <- filter(data, Region == input$region)
+    paste("In Region: ", input$region,
+          "<br>Green Space: ", sum(region_data$Green_Space_Area_sqm), "sqm",
+          "<br>AQI: ", mean(region_data$AQI),
+          "<br>Emissions: ", sum(region_data$CO2_Emission_Public_g_per_km), "g/km")
+  })
+  
+  output$overview_plot <- renderPlotly({
+    region_data <- filter(data, Region == input$region)
+    p <- ggplot(region_data, aes(x = Green_Space_Area_sqm, y = AQI)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(title = "Impact of Green Space on AQI", x = "Green Space Area (sqm)", y = "Air Quality Index (AQI)") +
+      theme_minimal()
+    
+    ggplotly(p)  # Convert ggplot to plotly
+  })
+  
+  # Geospatial Analysis: Show Leaflet map with dynamic markers for green space and AQI
+  output$geo_map <- renderLeaflet({
+    leaflet(data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        lng = ~Longitude, lat = ~Latitude,
+        radius = ~Green_Space_Area_sqm / 1000, 
+        color = ~ifelse(AQI > 50, "red", "green"),
+        popup = ~paste("Region: ", Region, "<br>", "AQI: ", AQI)
+      )
+  })
+  
+  # Trends and Correlations Tab: Scatter plot for Green Space vs AQI by Region
+  output$trend_plot <- renderPlotly({
+    p <- ggplot(data, aes(x = Green_Space_Area_sqm, y = AQI, color = Region)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(title = "Green Space vs AQI by Region", x = "Green Space Area (sqm)", y = "AQI") +
+      theme_light()
+    
+    ggplotly(p)  # Convert ggplot to plotly
+  })
+  
+  # Model Results: Visualize Clustering/Regression Results
+  output$model_results <- renderPlotly({
+    p <- ggplot(data, aes(x = Green_Space_Area_sqm, y = AQI, color = as.factor(Cluster))) +
+      geom_point() +
+      labs(title = "Clustered Regions based on Green Space & AQI", x = "Green Space Area (sqm)", y = "AQI") +
+      theme_minimal()
+    
+    ggplotly(p)  # Convert ggplot to plotly
+  })
+  
+  # Scenario Simulation: Simulate changes in green space and emissions
+  observeEvent(input$simulate, {
+    # Simulate green space and emission changes
+    data$Simulated_Green_Space <- data$Green_Space_Area_sqm + input$green_space
+    data$Simulated_Emissions <- data$CO2_Emission_Public_g_per_km - (input$green_space * 0.05)
+    
+    output$scenario_results <- renderText({
+      paste("Simulated Change in Green Space: ", input$green_space, "sqm",
+            "<br>Predicted Emissions Reduction: ", sum(data$Simulated_Emissions) - sum(data$CO2_Emission_Public_g_per_km), "g/km")
+    })
+  })
+}
+
+# Run the application1
+shinyApp(ui = ui, server = server)
+
+```
+```{r}
+# Load required libraries
+library(shiny)
+library(leaflet)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(cluster) # For silhouette score calculation
+library(Metrics) # For RMSE calculation
+
+# Assuming 'data' is already loaded
+# data <- read.csv("your_data.csv")
+
+# Create the UI for the dashboard
+ui <- fluidPage(
+  titlePanel("Urban Sustainability Dashboard"),
+  
+  # Sidebar layout with a panel for tabs
+  sidebarLayout(
+    sidebarPanel(
+      # Add filters for Region and AQI Range
+      selectInput("region", "Select Region:", choices = unique(data$Region), selected = "Adyar"),
+      sliderInput("aqi_range", "Select AQI Range:", 
+                  min = min(data$AQI), max = max(data$AQI), 
+                  value = c(min(data$AQI), max(data$AQI))),
+      actionButton("update", "Update Dashboard")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        
+        # Overview Tab
+        tabPanel("Overview", 
+                 h3("Overview of Green Space and AQI"),
+                 textOutput("overview_text"),
+                 plotlyOutput("overview_plot")
+        ),
+        
+        # Geospatial Analysis Tab
+        tabPanel("Geospatial Analysis", 
+                 h3("Maps of Green Space, AQI, and Transit Stops"),
+                 leafletOutput("geo_map")
+        ),
+        
+        # Trends and Correlations Tab
+        tabPanel("Trends and Correlations", 
+                 h3("Scatter Plots of Green Space and AQI"),
+                 plotlyOutput("trend_plot")
+        ),
+        
+        # Model Results Tab
+        tabPanel("Model Results", 
+                 h3("Clustering and Regression Insights"),
+                 plotlyOutput("model_results"),
+                 verbatimTextOutput("model_metrics")
+        ),
+        
+        # Scenarios Tab
+        tabPanel("Scenarios", 
+                 h3("Simulating Urbanization Changes"),
+                 sliderInput("green_space", "Change in Green Space (sqm):", min = 0, max = 10000, value = 5000),
+                 actionButton("simulate", "Simulate Change"),
+                 textOutput("scenario_results")
+        )
+      )
+    )
+  )
+)
+
+# Create the server logic
+server <- function(input, output, session) {
+  
+  # Overview Tab: Summary of Green Space, AQI, Emissions
+  output$overview_text <- renderText({
+    region_data <- filter(data, Region == input$region)
+    paste("Green Space: ", sum(region_data$Green_Space_Area_sqm), "sqm",
+          "<br>AQI: ", mean(region_data$AQI),
+          "<br>Emissions: ", sum(region_data$CO2_Emission_Public_g_per_km), "g/km")
+  })
+  
+  output$overview_plot <- renderPlotly({
+    region_data <- filter(data, Region == input$region)
+    p <- ggplot(region_data, aes(x = Green_Space_Area_sqm, y = AQI)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(title = "Green Space vs AQI", x = "Green Space Area (sqm)", y = "AQI")
+    
+    ggplotly(p) 
+  })
+  
+  # Geospatial Analysis Tab: Maps of Green Space, AQI, and Transit Stops
+  output$geo_map <- renderLeaflet({
+    region_data <- filter(data, AQI >= input$aqi_range[1] & AQI <= input$aqi_range[2], Region == input$region)
+    leaflet(region_data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        lng = ~Longitude, lat = ~Latitude,
+        radius = ~Green_Space_Area_sqm / 1000, 
+        color = ~ifelse(AQI > 50, "red", "green"),
+        popup = ~paste("Region: ", Region, "<br>", "AQI: ", AQI)
+      )
+  })
+  
+  # Trends and Correlations Tab: Scatter plots of Green Space and AQI
+  output$trend_plot <- renderPlotly({
+    filtered_data <- filter(data, AQI >= input$aqi_range[1] & AQI <= input$aqi_range[2])
+    p <- ggplot(filtered_data, aes(x = Green_Space_Area_sqm, y = AQI, color = Region)) +
+      geom_point() +
+      labs(title = "Green Space vs AQI by Region", x = "Green Space Area (sqm)", y = "AQI")
+    
+    ggplotly(p)
+  })
+  
+  # Model Results Tab: Interactive visualizations for clustering and regression
+  output$model_results <- renderPlotly({
+    # Assuming clustering is done already and the 'Cluster' column exists in data
+    p <- ggplot(data, aes(x = Green_Space_Area_sqm, y = AQI, color = as.factor(Cluster))) +
+      geom_point() +
+      labs(title = "Clustering of Regions", x = "Green Space Area (sqm)", y = "AQI")
+    
+    ggplotly(p) 
+  })
+  
+ # Model Metrics: RMSE and Silhouette Score
+output$model_metrics <- renderPrint({
+  # For regression (assuming simple linear regression)
+  model <- lm(AQI ~ Green_Space_Area_sqm, data = data)
+  predictions <- predict(model, newdata = data)
+  rmse_val <- rmse(data$AQI, predictions)  # Using Metrics package for RMSE
+  
+  # For clustering (assuming k-means clustering is done already and data$Cluster exists)
+  kmeans_model <- kmeans(data[, c("Green_Space_Area_sqm", "AQI")], centers = 3) # Example with 3 clusters
+  data$Cluster <- kmeans_model$cluster
+  silhouette_score <- silhouette(kmeans_model$cluster, dist(data[, c("Green_Space_Area_sqm", "AQI")]))
+  silhouette_avg <- mean(silhouette_score[, 3])
+  
+  # Display the results
+  cat("Model Validation Metrics:\n")
+  cat("RMSE (Regression):", round(rmse_val, 2), "\n")
+  cat("Average Silhouette Score (Clustering):", round(silhouette_avg, 2), "\n")
+})
+
+  
+  # Scenarios Tab: Simulate changes in green space and emissions
+  observeEvent(input$simulate, {
+    # Update based on the slider input
+    data$Simulated_Green_Space <- data$Green_Space_Area_sqm + input$green_space
+    
+    # Re-calculate emissions (simple model: assuming emissions are inversely related to green space)
+    data$Simulated_Emissions <- data$CO2_Emission_Public_g_per_km - (input$green_space * 0.05)
+    
+    output$scenario_results <- renderText({
+      paste("Simulated Change in Green Space: ", input$green_space, "sqm",
+            "<br>Predicted Emissions Reduction: ", sum(data$Simulated_Emissions) - sum(data$CO2_Emission_Public_g_per_km), "g/km")
+    })
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
+```
+
